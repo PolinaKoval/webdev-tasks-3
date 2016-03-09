@@ -162,7 +162,7 @@ describe('Flow', () => {
             });
         });
 
-         it('should calls functions sync if limit is 1', () => {
+        it('should calls functions sync if limit is 1', () => {
             let calls = 0;
             flow.parallel([next => {
                 setTimeout(function () {
@@ -227,6 +227,16 @@ describe('Flow', () => {
             });
             flow.map([0, 1, 2], spy, (error, results) => {
                 expect(error).to.be.equal('error0');
+            });
+        });
+    });
+    describe('MakeAsync', () => {
+        it('should make sync functions async', () => {
+            let asyncFunc = flow.makeAsync(arg => {
+                arg++;
+            });
+            asyncFunc(0, (error, data) => {
+                expect(data).to.be.equal(1);
             });
         });
     });
