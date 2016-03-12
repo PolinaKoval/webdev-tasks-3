@@ -2,14 +2,13 @@
   "private": true,
   "dependencies": {
     "chai": "^3.5.0",
-    "chai-spies": "^0.7.1",
     "expect": "^1.14.0",
     "jscs": "^2.11.0",
     "mocha": "^2.4.5",
     "sinon": "^1.17.3"
   },
   "scripts": {
-    "test": "mocha test/* && npm run lint",
+    "test": "mocha test",
     "lint": "jscs ."
   }
 }

@@ -8,31 +8,25 @@ const expect = chai.expect;
 describe('Flow', () => {
     describe('Serial', () => {
         it('should calls functions sequentially', () => {
-            let spy1 = sinon.spy(next => {
-                next(null);
-            });
-            let spy2 = sinon.spy((data, next) => {
-                next(null, 'result');
-            });
+            let spy1 = sinon.spy(next => next(null));
+            let spy2 = sinon.spy((data, next) => next(null, 'result'));
             flow.serial([spy1, spy2], (error, data) => {});
-            assert(spy2.calledAfter(spy1));
+            expect(spy2.calledAfter(spy1)).to.be.true;
         });
 
         it('should pass arguments to following function', () => {
-            let spy = sinon.spy((data, next) => {
-                next(null, ++data);
-            });
+            let spy = sinon.spy((data, next) => next(null, ++data));
             flow.serial([
-                next => {
-                    next(null, 0);
-                },
+                next => next(null, 0),
                 spy,
                 spy,
                 spy
-            ], (error, data) => {});
-            assert.equal(spy.args[0][0], 0);
-            assert.equal(spy.args[1][0], 1);
-            assert.equal(spy.args[2][0], 2);
+            ], (error, data) => {
+                expect(error).to.be.null;
+            });
+            expect(spy.firstCall.args[0]).to.equal(0);
+            expect(spy.secondCall.args[0]).to.equal(1);
+            expect(spy.thirdCall.args[0]).to.equal(2);
         });
 
         it('should calls callback with result of the last function', () => {
@@ -56,32 +50,42 @@ describe('Flow', () => {
         });
 
         it('should not execute function if previous failed', () => {
-            let spy = sinon.spy(next => {
-                next(true);
-            });
-            flow.serial([spy, spy, spy], (error, next) => {});
+            let spy = sinon.spy((data, next) => next(true));
+            flow.serial([
+                next => next(null),
+                spy,
+                spy,
+                spy
+            ], (error, next) => {});
             expect(spy.calledOnce).to.be.true;
         });
 
-        it('should calls callback with error if one of functions failed', () => {
-            let func = next => {
-                next(true);
-            };
-            flow.serial([func, func, func],
+        it('should calls callback with error if one of functions failed', (done) => {
+            let spy = sinon.spy(next => next(true));
+            flow.serial([
+                next => next(true, 0),
+                spy,
+                spy
+            ],
             (error, data) => {
+                expect(data).to.deep.equal(0);
+                expect(spy.called).to.be.false;
                 expect(error).to.be.true;
+                done();
             });
         });
     });
     describe('Parallel', () => {
-        it('should calls all functions once', () => {
-            let spy1 = sinon.spy();
-            let spy2 = sinon.spy();
-            let spy3 = sinon.spy();
-            flow.parallel([spy1, spy2, spy3], (error, data) => {});
-            expect(spy1.calledOnce).to.be.true;
-            expect(spy2.calledOnce).to.be.true;
-            expect(spy3.calledOnce).to.be.true;
+        it('should calls all functions once', (done) => {
+            let spy1 = sinon.spy(next => next(null));
+            let spy2 = sinon.spy(next => next(null));
+            let spy3 = sinon.spy(next => next(null));
+            flow.parallel([spy1, spy2, spy3], (error, data) => {
+                expect(spy1.calledOnce).to.be.true;
+                expect(spy2.calledOnce).to.be.true;
+                expect(spy3.calledOnce).to.be.true;
+                done();
+            });
         });
 
         it('should calls all functions parallel if limit is more than number of functions', () => {
@@ -121,14 +125,22 @@ describe('Flow', () => {
 
         it('should calls callback with error if one of functions failed', (done) => {
             flow.parallel([
-                next => {
-                    next(true);
-                },
-                next => {
-                    next(null);
-                }
+                next => next(true),
+                next => next(null)
             ], (error, data) => {
                 expect(error).to.be.true;
+                done();
+            });
+        });
+
+        it('should ignore object in functions array if it is not function', (done) => {
+            flow.parallel([
+                next => next(null, 1),
+                'string',
+                next => next(null, 3)
+            ], (error, data) => {
+                expect(data).to.deep.equal([1,,3]);
+                expect(error).to.be.null;
                 done();
             });
         });
@@ -167,24 +179,34 @@ describe('Flow', () => {
 
         it('should calls functions sync if limit is 1', (done) => {
             let calls = 0;
-            flow.parallel([next => {
-                setTimeout(function () {
-                    calls++;
-                    next(null, calls);
-                }, 1000);
-            }, next => {
-                setTimeout(function () {
-                    calls++;
-                    next(null, calls);
-                }, 0);
-            }, next => {
-                setTimeout(function () {
-                    calls++;
-                    next(null, calls);
-                }, 0);
-            }], 1,
+            let asyncFunc = (next, time) => {
+                setTimeout(() =>
+                    next(null, ++calls), time);
+            };
+            flow.parallel([
+                next => asyncFunc(next, 1000),
+                next => asyncFunc(next, 0),
+                next => asyncFunc(next, 0)
+            ], 1,
             (error, results) => {
                 expect(results).to.deep.equal([1,2,3]);
+                done();
+            });
+        });
+
+        it('should calls functions in correct order according limit ', (done) => {
+            let calls = 0;
+            let asyncFunc = (next, time) => {
+                setTimeout(() =>
+                    next(null, ++calls), time);
+            };
+            flow.parallel([
+                next => asyncFunc(next, 1000),
+                next => asyncFunc(next, 0),
+                next => asyncFunc(next, 1000)
+            ],
+            (error, results) => {
+                expect(results).to.deep.equal([2,1,3]);
                 done();
             });
         });
@@ -193,9 +215,9 @@ describe('Flow', () => {
         it('should calls function with all arguments', () => {
             let spy = sinon.spy();
             flow.map([0,1,2], spy, (error, data) => {});
-            expect(spy.calledWith(0)).to.be.true;
-            expect(spy.calledWith(1)).to.be.true;
-            expect(spy.calledWith(2)).to.be.true;
+            expect(spy.firstCall.args[0]).to.be.equal(0);
+            expect(spy.secondCall.args[0]).to.be.equal(1);
+            expect(spy.thirdCall.args[0]).to.be.equal(2);
         });
 
         it('should calls callback with results of all functions in correct order', (done) => {
@@ -224,7 +246,7 @@ describe('Flow', () => {
             let cbSpy = sinon.spy();
             flow.map([0], spy, cbSpy);
             assert(cbSpy.calledOnce);
-            expect(cbSpy.args[0][0]).to.be.true;
+            expect(cbSpy.firstCall.args[0]).to.be.true;
         });
 
         it('should calls callback with first error if there are multiple errors', (done) => {
